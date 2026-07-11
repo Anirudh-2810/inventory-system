@@ -1,0 +1,19 @@
+# Never bake secrets or local data into the image
+.env
+.env.*
+*.db
+*.sqlite
+*.sqlite3
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Tests / dev
+test_web.db
+.pytest_cache/
+
+# VCS / OS
+.git/
+.gitignore
+.DS_Store
