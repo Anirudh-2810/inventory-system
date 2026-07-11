@@ -1,0 +1,3 @@
+# Production dependency for the web/API tier.
+# The offline CLI + GUI have ZERO third-party dependencies.
+gunicorn>=21.0

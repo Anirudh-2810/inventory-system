@@ -12,8 +12,9 @@ WORKDIR /app/src
 
 # Copy only the source (secrets come from runtime env / secret manager, never baked in)
 COPY src/ ./
+COPY requirements.txt ./
 
-RUN pip install --no-cache-dir gunicorn
+RUN pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 8000
 
