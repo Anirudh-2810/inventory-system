@@ -171,7 +171,7 @@ def delete_product(req, ctx):
 
 
 def sale_product(req, ctx):
-    pid = req.path_only.rsplit("/", 1)[-1]
+    pid = req.path_only.split("/")[3]
     p = _owned_product(ctx, req.user["sub"], pid)
     if p is None:
         return 404, {"error": "Not found"}
@@ -189,7 +189,7 @@ def sale_product(req, ctx):
 
 
 def adjust_product(req, ctx):
-    pid = req.path_only.rsplit("/", 1)[-1]
+    pid = req.path_only.split("/")[3]
     p = _owned_product(ctx, req.user["sub"], pid)
     if p is None:
         return 404, {"error": "Not found"}

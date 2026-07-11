@@ -97,6 +97,12 @@ pid = body["product"]["id"]
 st, body, _ = call("GET", f"/api/products/{pid}", token=tokenA)
 check("owner can read own product", st == 200 and body["product"]["id"] == pid)
 
+# sale + adjust (regression: id must come from /<id>/sale, not the suffix)
+st, body, _ = call("POST", f"/api/products/{pid}/sale", {"qty": 2}, token=tokenA)
+check("sale reduces stock", st == 200 and body["product"]["quantity"] == 8)
+st, body, _ = call("POST", f"/api/products/{pid}/adjust", {"qty": 3, "notes": "restock"}, token=tokenA)
+check("adjust changes stock", st == 200 and body["product"]["quantity"] == 11)
+
 # 6. Second user B cannot read A's product (IDOR defense)
 st, bB, _ = call("POST", "/api/auth/signup", {"email": "b@shop.com", "password": "password123"})
 tokenB = bB["access_token"]
