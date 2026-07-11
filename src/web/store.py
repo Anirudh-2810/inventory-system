@@ -112,3 +112,19 @@ class UserStore:
                 (pw_hash, salt, datetime.now().isoformat(), user_id),
             )
             conn.commit()
+
+    def delete_user(self, user_id: str) -> None:
+        """Permanently remove a user and all of their personal data.
+
+        Cascades to the user's products and the transactions tied to them so no
+        PII or business data is orphaned after deletion.
+        """
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM transactions "
+                "WHERE product_id IN (SELECT id FROM products WHERE owner_id = ?)",
+                (user_id,),
+            )
+            conn.execute("DELETE FROM products WHERE owner_id = ?", (user_id,))
+            conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            conn.commit()

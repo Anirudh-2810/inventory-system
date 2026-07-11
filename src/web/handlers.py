@@ -5,10 +5,14 @@ trusts client-supplied prices/quantities for payments. All user-facing strings
 are HTML-escaped on output (XSS defense) even though the API is JSON.
 """
 
+import logging
+
 import auth
 import payments
 import utils
 from .security import get_bearer_token
+
+logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
@@ -26,6 +30,7 @@ def _sanitize_product(p) -> dict:
     # but explicitly drop any future sensitive keys.
     d.pop("password_hash", None)
     d.pop("salt", None)
+    d.pop("owner_id", None)  # internal tenant id; the client already has it via the JWT
     return d
 
 
@@ -92,10 +97,10 @@ def reset_request(req, ctx):
     user = ctx.users.get_by_email(email)
     if user is not None:
         # Generate a single-use, 15-minute token. In production, email it.
-        token = auth.generate_reset_token(user["email"])
-        # Intentionally not returned to the client.
-        import logging
-        logging.getLogger(__name__).info("Reset token issued for %s (dev: %s)", email, token)
+        auth.generate_reset_token(user["email"])
+        # Intentionally not returned to the client, and NEVER logged: a logged
+        # reset token lets anyone with log access take over the account.
+        logger.info("Password reset token issued (email verified; token not logged)")
     # Always return the same message to avoid account enumeration.
     return 202, {"status": "If the email exists, a reset link has been sent"}
 
@@ -112,6 +117,28 @@ def reset_confirm(req, ctx):
         return 400, {"error": "Invalid or expired reset token"}
     ctx.users.update_password(user["id"], new_password)
     return 200, {"status": "password_updated"}
+
+
+def delete_account(req, ctx):
+    """Delete the authenticated user and all of their personal data (GDPR-style).
+
+    Requires the account password as confirmation so a stolen/valid token alone
+    cannot destroy an account. Also blacklists the calling token.
+    """
+    data = req.json_data() or {}
+    user = ctx.users.get_by_id(req.user["sub"])
+    if user is None:
+        return 404, {"error": "Not found"}
+    # Password confirmation prevents accidental or coerced deletion.
+    if not ctx.users.verify_credentials(user["email"], data.get("password") or ""):
+        return 401, {"error": "Password confirmation required"}
+    ctx.users.delete_user(req.user["sub"])
+    token = get_bearer_token(req.headers)
+    if token:
+        payload = auth.verify_jwt(token)
+        if payload and payload.get("jti"):
+            auth.blacklist_token(payload["jti"])
+    return 200, {"status": "account_deleted"}
 
 
 # --------------------------------------------------------------------------- #
@@ -207,13 +234,15 @@ def adjust_product(req, ctx):
 
 
 def stock_status(req, ctx):
-    return 200, {"status": ctx.service().get_stock_status()}
+    # Scoped to the caller so one tenant can never see another's aggregates.
+    return 200, {"status": ctx.service().get_stock_status(req.user["sub"])}
 
 
 def report(req, ctx):
+    # Scoped to the caller (cross-tenant isolation — see security audit).
     return 200, {
-        "by_category": ctx.service().report_by_category(),
-        "sales": ctx.service().get_sales_report(),
+        "by_category": ctx.service().report_by_category(req.user["sub"]),
+        "sales": ctx.service().get_sales_report(req.user["sub"]),
     }
 
 

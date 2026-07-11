@@ -40,6 +40,9 @@ class Config:
 
         self.debug: bool = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
 
+        lvl = os.getenv("LOG_LEVEL", "INFO").upper()
+        self.log_level: int = getattr(logging, lvl, logging.INFO)
+
         self.host: str = os.getenv("WEB_HOST", "127.0.0.1")
         try:
             self.port: int = int(os.getenv("WEB_PORT", "8000"))

@@ -19,6 +19,7 @@ def build_routes() -> list:
         ("POST", re.compile(r"^/api/auth/reset-confirm$"), H.reset_confirm, False, None, "default"),
         ("POST", re.compile(r"^/api/auth/refresh$"), H.refresh, False, None, "default"),
         ("POST", re.compile(r"^/api/auth/logout$"), H.logout, True, None, "default"),
+        ("DELETE", re.compile(r"^/api/account$"), H.delete_account, True, None, "default"),
 
         # --- Inventory (protected + ownership-checked) ---
         ("GET", re.compile(r"^/api/products$"), H.list_products, True, None, "default"),
@@ -43,9 +44,9 @@ def build_routes() -> list:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s [%(levelname)s] %(message)s")
     config = Config()
+    logging.basicConfig(level=config.log_level,
+                        format="%(asctime)s [%(levelname)s] %(message)s")
     users = UserStore(config.db_path)
     routes = build_routes()
     run_server(config, users, routes)

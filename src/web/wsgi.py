@@ -25,12 +25,12 @@ from web.store import UserStore
 from web.server import ServerState, dispatch
 from web.app import build_routes
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s [%(levelname)s] %(message)s")
-
 _config = Config()
 _users = UserStore(_config.db_path)
 _state = ServerState(_config, _users, build_routes())
+
+logging.basicConfig(level=_config.log_level,
+                    format="%(asctime)s [%(levelname)s] %(message)s")
 
 
 def application(environ, start_response):

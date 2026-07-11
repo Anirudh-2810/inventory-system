@@ -44,7 +44,10 @@ def fail(message: str) -> None:
 # Validate critical environment variables before proceeding
 DB_PATH = os.getenv("INVENTORY_DB_PATH")
 if not DB_PATH:
-    fail("Configuration error: database path not set")
+    if getattr(sys, "frozen", False):
+        DB_PATH = os.path.join(os.path.dirname(sys.executable), "inventory.db")
+    else:
+        fail("Configuration error: database path not set")
 
 # Debug mode must default to OFF
 DEBUG = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")

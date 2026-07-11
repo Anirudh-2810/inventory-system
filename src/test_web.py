@@ -113,6 +113,31 @@ check("IDOR blocked: other user gets 404", st == 404)
 st, _, _ = call("DELETE", f"/api/products/{pid}", token=tokenB)
 check("IDOR blocked on delete", st == 404)
 
+# 7b. Cross-tenant aggregation: B must NEVER see A's data in stock-status / report
+st, body, _ = call("GET", "/api/stock-status", token=tokenB)
+check("stock-status excludes other tenants' products",
+      st == 200 and body["status"]["total_products"] == 0)
+st, body, _ = call("GET", "/api/report", token=tokenB)
+check("report excludes other tenants' data",
+      st == 200 and body["by_category"] == [] and body["sales"] == [])
+# And A (who owns the product + a sale) does see their own aggregates.
+st, body, _ = call("GET", "/api/stock-status", token=tokenA)
+check("stock-status shows own products", st == 200 and body["status"]["total_products"] == 1)
+st, body, _ = call("GET", "/api/report", token=tokenA)
+check("report shows own sales", st == 200 and len(body["sales"]) >= 1)
+
+# 7c. Account deletion flow (separate user C so earlier tests are undisturbed)
+st, bC, _ = call("POST", "/api/auth/signup", {"email": "c@shop.com", "password": "password123"})
+tokenC = bC["access_token"]
+st, _, _ = call("DELETE", "/api/account", {"password": "wrong"}, token=tokenC)
+check("account deletion rejects wrong password", st == 401)
+# product created by C is removed along with the account
+call("POST", "/api/products", {"name": "C-only", "price": 1.0, "stock": 1}, token=tokenC)
+st, _, _ = call("DELETE", "/api/account", {"password": "password123"}, token=tokenC)
+check("account deletion succeeds with confirmation", st == 200)
+st, _, _ = call("POST", "/api/auth/login", {"email": "c@shop.com", "password": "password123"})
+check("deleted account cannot log in", st == 401)
+
 # 8. Expired token rejected
 import auth
 exp_token = auth.create_jwt({"sub": bB["user"]["id"], "exp": int(time.time()) - 10, "type": "access", "jti": "x"})

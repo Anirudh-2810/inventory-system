@@ -77,15 +77,15 @@ class InventoryService:
         return self.db.get_product(product_id)
 
     # ---- Reporting --------------------------------------------------------
-    def get_stock_status(self) -> Dict:
-        return self.db.get_stock_status()
+    def get_stock_status(self, owner_id: Optional[str] = None) -> Dict:
+        return self.db.get_stock_status(owner_id)
 
-    def get_sales_report(self) -> List[Dict]:
-        by_month = self.db.get_sales_by_month()
+    def get_sales_report(self, owner_id: Optional[str] = None) -> List[Dict]:
+        by_month = self.db.get_sales_by_month(owner_id)
         return [{"month": m, "units_sold": q} for m, q in by_month.items()]
 
-    def report_by_category(self) -> List[Dict]:
-        return self.db.report_by_category()
+    def report_by_category(self, owner_id: Optional[str] = None) -> List[Dict]:
+        return self.db.report_by_category(owner_id)
 
     # ---- Helpers ----------------------------------------------------------
     @staticmethod

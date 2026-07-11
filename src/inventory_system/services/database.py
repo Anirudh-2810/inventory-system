@@ -173,14 +173,22 @@ class InventoryDatabase:
         return tx
 
     # -- reporting --------------------------------------------------------
-    def get_stock_status(self) -> Dict[str, object]:
+    def get_stock_status(self, owner_id: Optional[str] = None) -> Dict[str, object]:
         with self._connect() as conn:
-            total, low, out = conn.execute(
-                """SELECT COUNT(*),
-                          SUM(CASE WHEN quantity <= reorder_level THEN 1 ELSE 0 END),
-                          SUM(CASE WHEN quantity = 0 THEN 1 ELSE 0 END)
-                   FROM products"""
-            ).fetchone()
+            if owner_id is not None:
+                total, low, out = conn.execute(
+                    """SELECT COUNT(*),
+                              SUM(CASE WHEN quantity <= reorder_level THEN 1 ELSE 0 END),
+                              SUM(CASE WHEN quantity = 0 THEN 1 ELSE 0 END)
+                       FROM products WHERE owner_id = ?""", (owner_id,)
+                ).fetchone()
+            else:
+                total, low, out = conn.execute(
+                    """SELECT COUNT(*),
+                              SUM(CASE WHEN quantity <= reorder_level THEN 1 ELSE 0 END),
+                              SUM(CASE WHEN quantity = 0 THEN 1 ELSE 0 END)
+                       FROM products"""
+                ).fetchone()
         total = total or 0
         low = low or 0
         out = out or 0
@@ -192,26 +200,46 @@ class InventoryDatabase:
             "out_of_stock_percentage": round(out / total * 100, 2) if total else 0.0,
         }
 
-    def get_sales_by_month(self) -> Dict[str, int]:
+    def get_sales_by_month(self, owner_id: Optional[str] = None) -> Dict[str, int]:
         with self._connect() as conn:
-            rows = conn.execute(
-                """SELECT strftime('%Y-%m', timestamp) AS month,
-                          SUM(ABS(quantity_change)) AS units
-                   FROM transactions
-                   WHERE transaction_type = 'sale'
-                   GROUP BY month ORDER BY month"""
-            ).fetchall()
+            if owner_id is not None:
+                rows = conn.execute(
+                    """SELECT strftime('%Y-%m', t.timestamp) AS month,
+                              SUM(ABS(t.quantity_change)) AS units
+                       FROM transactions t
+                       JOIN products p ON t.product_id = p.id
+                       WHERE t.transaction_type = 'sale' AND p.owner_id = ?
+                       GROUP BY month ORDER BY month""", (owner_id,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT strftime('%Y-%m', timestamp) AS month,
+                              SUM(ABS(quantity_change)) AS units
+                       FROM transactions
+                       WHERE transaction_type = 'sale'
+                       GROUP BY month ORDER BY month"""
+                ).fetchall()
         return {month: units for month, units in rows}
 
-    def report_by_category(self) -> List[Dict[str, object]]:
+    def report_by_category(self, owner_id: Optional[str] = None) -> List[Dict[str, object]]:
         with self._connect() as conn:
-            rows = conn.execute(
-                """SELECT COALESCE(category, 'Unspecified') AS category,
-                          COUNT(*) AS products,
-                          SUM(quantity) AS qty,
-                          SUM(CASE WHEN quantity <= reorder_level THEN 1 ELSE 0 END) AS low
-                   FROM products GROUP BY category ORDER BY products DESC"""
-            ).fetchall()
+            if owner_id is not None:
+                rows = conn.execute(
+                    """SELECT COALESCE(category, 'Unspecified') AS category,
+                              COUNT(*) AS products,
+                              SUM(quantity) AS qty,
+                              SUM(CASE WHEN quantity <= reorder_level THEN 1 ELSE 0 END) AS low
+                       FROM products WHERE owner_id = ?
+                       GROUP BY category ORDER BY products DESC""", (owner_id,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT COALESCE(category, 'Unspecified') AS category,
+                              COUNT(*) AS products,
+                              SUM(quantity) AS qty,
+                              SUM(CASE WHEN quantity <= reorder_level THEN 1 ELSE 0 END) AS low
+                       FROM products GROUP BY category ORDER BY products DESC"""
+                ).fetchall()
         return [
             {"category": c, "products": p, "quantity": q, "low_stock": l}
             for c, p, q, l in rows
