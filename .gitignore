@@ -38,3 +38,6 @@ utils.py
 
 # Logs
 *.log
+
+# PyInstaller build artifacts (the 12MB exe is rebuilt on demand)
+StockOffline.spec

@@ -1,0 +1,63 @@
+========================================================
+STOCKOFFLINE — OWNER / OPERATOR GUIDE (for you)
+========================================================
+
+GOAL: Earn your first rupee by installing StockOffline in local shops.
+
+--------------------------------------------------------
+1. PREPARE (do this at home, one time)
+--------------------------------------------------------
+- Build the .exe:  pip install pyinstaller
+                   python marketing/build_exe.py
+  -> gives marketing/dist/StockOffline.exe (no Python needed on shop PC)
+- OR just use Python: ensure shop PC has Python, copy the src/ folder.
+- Print: leaflet.txt, price_sheet.txt, shopkeeper_guide.txt, and a UPI QR.
+- Practice the demo 3 times at home until it's 30 seconds smooth.
+
+--------------------------------------------------------
+2. THE DEMO FLOW (memorize)
+--------------------------------------------------------
+1. Open StockOffline (double-click the .exe).
+2. Click "Add" -> "Surf 1kg", price 45, stock 20, barcode 123 -> Add.
+3. Scan/type 123 in search -> product shows.
+4. Click "Sell", qty 5 -> stock 15.
+5. Set reorder level 18 -> it shows "LOW" -> "Sir, see the alert!"
+6. Click "Report" -> counts. Click "Export" -> CSV.
+
+--------------------------------------------------------
+3. AT THE SHOP (professional checklist)
+--------------------------------------------------------
+[ ] Greet, 30-sec demo (SHOW, don't explain).
+[ ] Ask owner for ONE real product to add live (builds trust).
+[ ] Show the LOW-stock alert — that's the "wow".
+[ ] Take UPI payment on the spot; give a written receipt.
+[ ] Leave: desktop shortcut + shopkeeper_guide.txt + "7-day free support".
+[ ] Evening: WhatsApp thank-you + 1-line "how to add today's stock" tip.
+[ ] Follow-up in 1 week — offer the Rs.299/month lease.
+
+--------------------------------------------------------
+4. YOUR WEEKLY RHYTHM (14 hrs/week)
+--------------------------------------------------------
+- 2 shop visits per day after classes/work (non-peak hours: 3-5pm).
+- Track 3 numbers: visits, demos, rupees earned (notebook is fine).
+- Sunday 30 min: which pitch line worked? Double down on it.
+
+--------------------------------------------------------
+5. SCALING (once you have 5 shops)
+--------------------------------------------------------
+- Convert upfront buyers to Rs.299/month lease = predictable income.
+- Ask each happy shop for 1 referral.
+- Later: deploy the WEB tier (Dockerfile + DEPLOY.md) so owners check
+  stock from their phone. The multi-tenant system already separates
+  each shop's data (owner_id).
+
+--------------------------------------------------------
+6. HONEST LIMITS (never overpromise)
+--------------------------------------------------------
+- v1 tracks stock & reports (CSV export). It does NOT print GST bills
+  yet — that's a future Rs.999 add-on.
+- Shop needs a PC (old laptop or Rs.3-4k mini-PC works).
+- You don't need GST below Rs.20 lakh turnover.
+
+FAQ answers are in pitch_script.txt — rehearse them.
+========================================================

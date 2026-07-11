@@ -1,0 +1,32 @@
+========================================================
+STOCKOFFLINE — HOW TO USE (for the shop owner)
+========================================================
+
+1. OPEN THE APP
+   Double-click the "StockOffline" icon on your desktop.
+   (It needs no internet.)
+
+2. ADD A PRODUCT (do this when new stock arrives)
+   - Click "Add"
+   - Type: Name, Price, How many in stock, Barcode (any number)
+   - Click "Add"
+   - Tip: you can also scan the barcode with a scanner.
+
+3. SELL TO A CUSTOMER
+   - Type the product name or scan the barcode in the search box
+   - Click "Sell", enter quantity, click OK
+   - Stock goes down automatically.
+
+4. CHECK LOW STOCK (every morning)
+   - Look at the list: items marked "LOW" need to be re-ordered.
+   - This is your reminder — never run out.
+
+5. MONTHLY REPORT
+   - Click "Report" to see totals and category breakdown.
+   - Click "Export" to save a file you can open in Excel.
+
+6. NEED HELP?
+   - WhatsApp the person who installed it. Support is free for 7 days.
+
+You do NOT need internet, and your data stays on this computer.
+========================================================

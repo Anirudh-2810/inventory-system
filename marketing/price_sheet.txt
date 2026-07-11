@@ -1,0 +1,29 @@
+========================================================
+STOCKOFFLINE — SERVICE & PRICE SHEET
+========================================================
+
+PACKAGE          PRICE              INCLUDES
+--------------------------------------------------------
+Basic Setup      Rs.499 (one-time)  Install on 1 PC,
+                                    import up to 100
+                                    products, 30-min
+                                    training, 7-day
+                                    WhatsApp support
+
+Monthly Lease    Rs.299 / month     Everything in Basic
+                                    + free updates +
+                                    monthly support visit
+
+ADD-ON: Barcode  Rs.199              Configure USB
+scanner setup                      scanner
+
+ADD-ON: Extra    Rs.199              Second terminal
+PC
+
+ADD-ON: GST bill Rs.999 (future)    Print GST bills
+module                            (paid extra when ready)
+
+--------------------------------------------------------
+PAYMENT: UPI only.
+NOTE: No GST registration needed below Rs.20 lakh turnover.
+========================================================
