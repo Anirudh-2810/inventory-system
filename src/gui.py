@@ -13,7 +13,7 @@ All data stays local (inventory.db) - no network access.
 import os
 import sys
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox, simpledialog, filedialog
 
 from inventory_system import InventoryService
 
@@ -344,6 +344,7 @@ class InventoryApp:
         self._btn(bar, "Edit", self._edit, "ghost").pack(side="left", padx=(0, 8))
         self._btn(bar, "Restock", self._restock, "ghost").pack(side="left", padx=(0, 8))
         self._btn(bar, "Report", self._report, "ghost").pack(side="left", padx=(0, 8))
+        self._btn(bar, "Import", self._import, "ghost").pack(side="left", padx=(0, 8))
         self._btn(bar, "Export", self._export, "ghost").pack(side="left", padx=(0, 8))
         ttk.Frame(bar, width=12).pack(side="left")
         self._btn(bar, "Delete", self._delete, "danger").pack(side="right")
@@ -507,6 +508,27 @@ class InventoryApp:
                             p.reorder_level, p.unit_price, p.cost_price,
                             p.supplier])
         self.toast.show(f"Exported {len(products)} products to CSV.", kind="success")
+
+    def _import(self):
+        path = filedialog.askopenfilename(
+            title="Import sales CSV",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            summary = self.svc.import_sales_csv(path)
+        except ValueError as e:
+            messagebox.showerror("Import failed", str(e), parent=self.root)
+            return
+        msg = (f"Imported {summary['imported']} sales rows, "
+               f"skipped {summary['skipped']}.")
+        if summary["problems"]:
+            msg += "\n\nFirst issues:\n" + "\n".join(
+                f"• {p}" for p in summary["problems"][:5])
+        if summary["skipped"]:
+            messagebox.showwarning("Import finished", msg, parent=self.root)
+        else:
+            self.toast.show(msg, kind="success")
 
 
 class ProductDialog(simpledialog.Dialog):

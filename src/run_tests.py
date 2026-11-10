@@ -64,6 +64,40 @@ def main():
     assert svc.get_product(p2.id) is None
     print("[OK] Deleted product")
 
+    # -- Sales CSV import (tscore data-contract v1) ----------------------
+    sales_csv = os.path.join(tempfile.gettempdir(), "inventory_sales_test.csv")
+    with open(sales_csv, "w", newline="") as f:
+        f.write("item,date,quantity,price\n")
+        f.write("WM-001,2026-10-01,5,25.00\n")       # resolves by SKU
+        f.write("WM-001,not-a-date,1,25.00\n")       # bad date -> problem
+        f.write("GHOST-ITEM,2026-10-03,2,10.00\n")   # unknown -> skipped
+    summary = svc.import_sales_csv(sales_csv)
+    assert summary["imported"] == 1, summary
+    assert summary["skipped"] == 2, summary
+    assert len(summary["problems"]) == 2, summary
+    assert svc.get_product(p1.id).quantity == 90, "import must not touch stock"
+    monthly = {r["month"]: r["units_sold"] for r in svc.get_sales_report()}
+    assert monthly.get("2026-10") == 5, monthly
+    print("[OK] Sales CSV import:", summary)
+
+    # create_missing path
+    with open(sales_csv, "w", newline="") as f:
+        f.write("item,date,quantity,price\n")
+        f.write("NEW-ITEM-9,2026-10-04,3,99.00\n")
+    summary = svc.import_sales_csv(sales_csv, create_missing=True)
+    assert summary["imported"] == 1 and summary["created"] == 1, summary
+    assert any(p.name == "NEW-ITEM-9" for p in svc.list_products())
+    print("[OK] Import with --create-missing:", summary)
+
+    # header-less file is a hard error, imports nothing
+    with open(sales_csv, "w", newline="") as f:
+        f.write("foo,bar\n1,2\n")
+    try:
+        svc.import_sales_csv(sales_csv)
+        raise AssertionError("expected ValueError for non-contract CSV")
+    except ValueError:
+        print("[OK] Non-contract CSV rejected")
+
     print("\nALL TESTS PASSED")
 
 

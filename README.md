@@ -15,6 +15,11 @@ that want multi-user, multi-device access.
   scan to sell, or search by SKU / name.
 - **Core inventory ops** — add, edit, delete, sell, restock/adjust, low-stock
   flags, category & sales reports, CSV export.
+- **Sales CSV import** — load sales history from any till/export in the
+  [tscore contract](https://github.com/Anirudh-2810/tscore/blob/main/docs/data-contract.md)
+  format (`item,date,quantity,price`). Historical imports are dated but never
+  touch counted stock (no double-counting); unknown items are reported, not
+  guessed. GUI: **Import** button. CLI: `import-sales`.
 - **Optional web/API tier** — JWT auth, per-tenant data isolation, rate
   limiting, and server-side payment verification.
 - **Security-hardened** — see [Security](#security) below.

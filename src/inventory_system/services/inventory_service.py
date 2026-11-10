@@ -1,11 +1,16 @@
 """Inventory service — high-level operations on products and stock levels."""
 
-from datetime import datetime
+import csv
+from datetime import date, datetime
 from typing import Dict, List, Optional
 
 from ..models.product import Product
 from ..models.transaction import InventoryTransaction
 from .database import InventoryDatabase
+
+# Sales CSV contract (tscore data-contract.md v1): item, date, quantity, price.
+# Column order may vary and extra columns are ignored; these four must exist.
+SALES_CSV_COLUMNS = ("item", "date", "quantity", "price")
 
 
 class InventoryService:
@@ -75,6 +80,100 @@ class InventoryService:
         )
         self.db.add_transaction(tx)
         return self.db.get_product(product_id)
+
+    # ---- Sales CSV import (tscore data-contract v1) ---------------------
+    def import_sales_csv(self, path: str, create_missing: bool = False) -> Dict:
+        """Import historical sales rows (item, date, quantity, price).
+
+        Records dated sale transactions WITHOUT touching current stock —
+        see InventoryDatabase.add_transaction(apply_stock=False). Row-level
+        problems are reported, never silently dropped; a file without the
+        contract columns raises ValueError and imports nothing.
+
+        Returns: {"imported": int, "created": int, "skipped": int,
+                  "problems": [str, ...]}
+        """
+        with open(path, newline="", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            header = reader.fieldnames or []
+            missing = [c for c in SALES_CSV_COLUMNS if c not in header]
+            if missing:
+                raise ValueError(
+                    f"not a contract sales CSV: missing column(s) {', '.join(missing)}")
+            rows = list(reader)
+
+        name_map = {
+            (p.name or "").strip().casefold(): p.id
+            for p in self.db.get_all_products()
+        }
+        imported = created = skipped = 0
+        problems: List[str] = []
+
+        def problem(msg: str) -> None:
+            nonlocal skipped
+            skipped += 1
+            if len(problems) < 10:
+                problems.append(msg)
+
+        for i, row in enumerate(rows, start=2):  # start=2: row 1 is the header
+            item = (row.get("item") or "").strip()
+            raw_date = (row.get("date") or "").strip()
+            raw_qty = (row.get("quantity") or "").strip()
+            raw_price = (row.get("price") or "").strip()
+            if not item:
+                problem(f"row {i}: empty item")
+                continue
+            try:
+                when = datetime.strptime(raw_date, "%Y-%m-%d")
+            except ValueError:
+                problem(f"row {i}: bad date {raw_date!r} (want YYYY-MM-DD)")
+                continue
+            if when.date() > date.today():
+                problem(f"row {i}: future date {raw_date!r}")
+                continue
+            try:
+                qty = int(raw_qty)
+                if qty < 1:
+                    raise ValueError
+            except ValueError:
+                problem(f"row {i}: bad quantity {raw_qty!r} (want integer >= 1)")
+                continue
+            try:
+                price = float(raw_price)
+                if price < 0:
+                    raise ValueError
+            except ValueError:
+                problem(f"row {i}: bad price {raw_price!r} (want number >= 0)")
+                continue
+
+            product = (
+                self.db.get_product_by_sku(item)
+                or self.db.get_product_by_barcode(item)
+                or (self.db.get_product(name_map[item.casefold()])
+                    if item.casefold() in name_map else None)
+            )
+            if product is None:
+                if not create_missing:
+                    problem(f"row {i}: unknown item {item!r}")
+                    continue
+                product = self.add_product({
+                    "name": item, "unit_price": price, "quantity": 0,
+                })
+                name_map[item.casefold()] = product.id
+                created += 1
+
+            tx = InventoryTransaction(
+                product_id=product.id,
+                quantity_change=-qty,
+                transaction_type="sale",
+                notes=f"imported sale price={price:g}",
+                timestamp=when,
+            )
+            self.db.add_transaction(tx, apply_stock=False)
+            imported += 1
+
+        return {"imported": imported, "created": created,
+                "skipped": skipped, "problems": problems}
 
     # ---- Reporting --------------------------------------------------------
     def get_stock_status(self, owner_id: Optional[str] = None) -> Dict:

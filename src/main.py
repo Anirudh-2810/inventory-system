@@ -10,6 +10,7 @@ Commands:
   status   stock health at a glance
   report   category + sales breakdown
   export   write inventory.csv
+  import-sales  import a sales CSV (item,date,quantity,price)
 
 Examples:
   python main.py add --name "Widget" --price 9.99 --stock 100 --sku W-1 --reorder 20
@@ -177,6 +178,23 @@ def cmd_export(a):
     print(f"Exported {len(products)} products -> {out}")
 
 
+def cmd_import_sales(a):
+    if not os.path.isfile(a.file):
+        fail(f"No such file: {a.file}")
+    try:
+        summary = svc().import_sales_csv(a.file, create_missing=a.create_missing)
+    except ValueError as e:
+        fail(str(e))
+    print(f"Imported {summary['imported']} sales rows"
+          + (f" (created {summary['created']} new items)" if summary["created"] else "")
+          + f", skipped {summary['skipped']}")
+    for p in summary["problems"]:
+        print(f"  ! {p}", file=sys.stderr)
+    if summary["skipped"] > len(summary["problems"]):
+        print(f"  ! ...and {summary['skipped'] - len(summary['problems'])} more skipped rows",
+              file=sys.stderr)
+
+
 # -- parser ---------------------------------------------------------------
 def build_parser():
     p = argparse.ArgumentParser(prog="inventory", description="Offline inventory manager")
@@ -229,6 +247,14 @@ def build_parser():
     ex = sub.add_parser("export", help="export inventory.csv")
     ex.add_argument("--file")
     ex.set_defaults(func=cmd_export)
+
+    im = sub.add_parser(
+        "import-sales",
+        help="import a sales CSV (contract: item,date,quantity,price)")
+    im.add_argument("--file", required=True, help="path to the sales CSV")
+    im.add_argument("--create-missing", action="store_true",
+                    help="create a product for items not in the catalog")
+    im.set_defaults(func=cmd_import_sales)
 
     return p
 

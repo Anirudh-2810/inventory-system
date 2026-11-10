@@ -146,7 +146,16 @@ class InventoryDatabase:
             return cur.rowcount > 0
 
     # -- transactions (atomic: row + stock update together) ---------------
-    def add_transaction(self, tx: InventoryTransaction) -> InventoryTransaction:
+    def add_transaction(self, tx: InventoryTransaction,
+                        apply_stock: bool = True) -> InventoryTransaction:
+        """Insert a transaction.
+
+        apply_stock=True (default): live operation — the product's quantity
+        moves with the transaction and oversell is rejected.
+        apply_stock=False: historical import — the row is recorded with its
+        own timestamp but current stock is left alone (the shop's counted
+        stock already reflects past sales; re-applying them would double-count).
+        """
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO transactions
@@ -161,14 +170,15 @@ class InventoryDatabase:
             row = cur.fetchone()
             if row is None:
                 raise ValueError(f"Unknown product: {tx.product_id}")
-            new_qty = row[0] + tx.quantity_change
-            if new_qty < 0:
-                raise ValueError(
-                    f"Not enough stock for {tx.product_id}: {row[0]} + {tx.quantity_change}")
-            conn.execute(
-                "UPDATE products SET quantity=?, updated_at=? WHERE id=?",
-                (new_qty, datetime.now().isoformat(), tx.product_id),
-            )
+            if apply_stock:
+                new_qty = row[0] + tx.quantity_change
+                if new_qty < 0:
+                    raise ValueError(
+                        f"Not enough stock for {tx.product_id}: {row[0]} + {tx.quantity_change}")
+                conn.execute(
+                    "UPDATE products SET quantity=?, updated_at=? WHERE id=?",
+                    (new_qty, datetime.now().isoformat(), tx.product_id),
+                )
             conn.commit()
         return tx
 
