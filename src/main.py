@@ -26,12 +26,9 @@ import argparse
 import csv
 import logging
 import os
-import subprocess
 import sys
-import tempfile
 import uuid
-from datetime import date, datetime
-from pathlib import Path
+from datetime import datetime
 
 # --- Environment validation -------------------------------------------------
 # Load environment variables (optionally from .env file if python-dotenv is available)
@@ -214,53 +211,16 @@ def cmd_import_sales(a):
               file=sys.stderr)
 
 
-def _tscore_dir() -> Path:
-    """Where the tscore forecasting repo lives (override: TSCORE_DIR)."""
-    env = os.getenv("TSCORE_DIR")
-    if env:
-        return Path(env)
-    # dev layout: <Brain>/inventory-system/src/main.py -> <Brain>/tscore
-    return Path(__file__).resolve().parents[2] / "tscore"
-
-
 def cmd_forecast(a):
     """Weekly reorder report: export history+stock -> tscore report.py -> print."""
-    script = _tscore_dir() / "scripts" / "report.py"
-    if not script.is_file():
-        fail(f"tscore not found at {_tscore_dir()} - set TSCORE_DIR "
-             "to the tscore checkout")
-    s = svc()
-    hist = s.get_sales_history()
-    if not hist:
-        fail("no sales history yet - run import-sales first")
-    tmp = Path(tempfile.mkdtemp(prefix="sb_forecast_"))
-    sales_csv = tmp / "sales.csv"
-    with open(sales_csv, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(["item", "date", "quantity", "price"])
-        for item, d, qty in hist:
-            w.writerow([item, d.isoformat(), qty, 0])
-    receipts = s.get_last_receipts()
-    stock_csv = tmp / "stock.csv"
-    with open(stock_csv, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(["item", "on_hand", "unit_price", "last_order_qty"])
-        for p in s.list_products():
-            key = (p.sku or "").strip() or p.name
-            w.writerow([key, p.quantity, p.unit_price, receipts.get(p.id, "")])
-    out_dir = (Path(a.out) if a.out
-               else Path(DB_PATH).parent / "reports" / date.today().isoformat())
-    cmd = [sys.executable, str(script), "--sales", str(sales_csv),
-           "--stock", str(stock_csv), "--out-dir", str(out_dir)]
-    for flag, val in (("--budget", a.budget), ("--safety", a.safety),
-                      ("--lead-time", a.lead_time),
-                      ("--max-order", a.max_order),
-                      ("--max-multiple", a.max_multiple)):
-        if val is not None:
-            cmd += [flag, str(val)]
-    proc = subprocess.run(cmd)
-    if proc.returncode != 0:
-        fail(f"report generation failed (tscore exit {proc.returncode})")
+    from inventory_system.services.forecast_service import run_weekly_report
+    try:
+        run_weekly_report(
+            svc(), DB_PATH, out_dir=a.out, budget=a.budget, safety=a.safety,
+            lead_time=a.lead_time, max_order=a.max_order,
+            max_multiple=a.max_multiple)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        fail(str(e))
 
 
 # -- parser ---------------------------------------------------------------

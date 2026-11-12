@@ -92,6 +92,17 @@ class InventoryDatabase:
                 CREATE INDEX IF NOT EXISTS idx_tx_time      ON transactions (timestamp);
                 CREATE INDEX IF NOT EXISTS idx_prod_supplier ON products (supplier);
                 CREATE INDEX IF NOT EXISTS idx_prod_owner    ON products (owner_id);
+                CREATE TABLE IF NOT EXISTS forecast_decisions (
+                    decision_id    TEXT PRIMARY KEY,
+                    item           TEXT NOT NULL,
+                    report_date    TEXT NOT NULL,
+                    suggested_qty  INTEGER NOT NULL,
+                    decision       TEXT NOT NULL,
+                    decided_at     TEXT NOT NULL,
+                    UNIQUE (item, report_date)
+                );
+                CREATE INDEX IF NOT EXISTS idx_decisions_date
+                    ON forecast_decisions (report_date);
                 """
             )
             conn.commit()

@@ -3,6 +3,7 @@
 import csv
 import math
 import os
+import uuid
 from datetime import date, datetime
 from typing import Dict, List, Optional
 
@@ -251,6 +252,42 @@ class InventoryService:
             if product_id not in out:
                 out[product_id] = int(qty)
         return out
+
+    # ---- Forecast decisions (approve/reject per weekly report) -----------
+    def record_decision(self, item: str, report_date: str, suggested_qty: int,
+                        decision: str) -> None:
+        """Approve/reject a suggested reorder. Upserts per (item, report_date)
+        so re-deciding in the same report replaces the first answer."""
+        if decision not in ("approved", "rejected"):
+            raise ValueError("decision must be 'approved' or 'rejected'")
+        with self.db._connect() as conn:
+            conn.execute(
+                """INSERT INTO forecast_decisions
+                       (decision_id, item, report_date, suggested_qty,
+                        decision, decided_at)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT (item, report_date) DO UPDATE SET
+                       decision = excluded.decision,
+                       suggested_qty = excluded.suggested_qty,
+                       decided_at = excluded.decided_at""",
+                (str(uuid.uuid4()), item, report_date, int(suggested_qty),
+                 decision, datetime.now().isoformat()),
+            )
+            conn.commit()
+
+    def list_decisions(self, report_date: Optional[str] = None) -> List[Dict]:
+        """Decisions as dicts, newest first; optionally one report's day."""
+        query = ("SELECT item, report_date, suggested_qty, decision, decided_at "
+                 "FROM forecast_decisions")
+        params: tuple = ()
+        if report_date is not None:
+            query += " WHERE report_date = ?"
+            params = (report_date,)
+        query += " ORDER BY decided_at DESC"
+        with self.db._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [{"item": r[0], "report_date": r[1], "suggested_qty": r[2],
+                 "decision": r[3], "decided_at": r[4]} for r in rows]
 
     def get_stock_status(self, owner_id: Optional[str] = None) -> Dict:
         return self.db.get_stock_status(owner_id)

@@ -16,6 +16,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog
 
 from inventory_system import InventoryService, csv_safe
+from inventory_system.services.forecast_service import (
+    read_forecast_rows, run_weekly_report)
 
 # When frozen by PyInstaller (one-file build), __file__ points into the temp
 # extraction directory, so resolve the database next to the real executable
@@ -346,6 +348,7 @@ class InventoryApp:
         self._btn(bar, "Restock", self._restock, "ghost").pack(side="left", padx=(0, 8))
         self._btn(bar, "Report", self._report, "ghost").pack(side="left", padx=(0, 8))
         self._btn(bar, "Import", self._import, "ghost").pack(side="left", padx=(0, 8))
+        self._btn(bar, "Forecast", self._forecast, "primary").pack(side="left", padx=(0, 8))
         self._btn(bar, "Export", self._export, "ghost").pack(side="left", padx=(0, 8))
         ttk.Frame(bar, width=12).pack(side="left")
         self._btn(bar, "Delete", self._delete, "danger").pack(side="right")
@@ -531,6 +534,24 @@ class InventoryApp:
         else:
             self.toast.show(msg, kind="success")
 
+    def _forecast(self):
+        """One click: run the weekly report pipeline and open the screen."""
+        from datetime import date as _date
+        try:
+            out_dir = run_weekly_report(self.svc, DB_PATH)
+        except (FileNotFoundError, ValueError, RuntimeError) as e:
+            messagebox.showerror("Forecast failed", str(e), parent=self.root)
+            return
+        try:
+            report_txt = (out_dir / "report.txt").read_text(encoding="utf-8")
+            rows = read_forecast_rows(out_dir)
+        except OSError as e:
+            messagebox.showerror("Forecast failed",
+                                 f"could not read report: {e}", parent=self.root)
+            return
+        ForecastWindow(self.root, self.svc, report_txt, rows,
+                       _date.today().isoformat())
+
 
 class ProductDialog(simpledialog.Dialog):
     """Add/Edit product form (dark themed, fades in)."""
@@ -635,6 +656,100 @@ class ReportWindow(tk.Toplevel):
         for i in range(1, 15):
             self.after(16, lambda v=i: self.attributes("-alpha", v / 14))
         self.after(16 * 15, lambda: self.attributes("-alpha", 1.0))
+
+
+class ForecastWindow(tk.Toplevel):
+    """Weekly reorder report + per-line approve/reject (plan Week 4).
+
+    Report text on top, forecast lines below; each decision is persisted
+    immediately via InventoryService.record_decision (upsert per day).
+    """
+
+    def __init__(self, parent, svc, report_txt, rows, report_date):
+        super().__init__(parent)
+        self.title(f"Weekly forecast - {report_date}")
+        self.geometry("780x680")
+        self.minsize(640, 520)
+        self.configure(background=BG)
+        self.attributes("-alpha", 0.0)
+        _style(self)
+        self.svc = svc
+        self.report_date = report_date
+        self.decisions = {d["item"]: d["decision"]
+                          for d in svc.list_decisions(report_date)}
+
+        ttk.Label(self, text="Weekly reorder report",
+                  style="Title.TLabel").pack(anchor="w", padx=18, pady=(14, 4))
+
+        txt = tk.Text(self, height=14, wrap="none", bg=PANEL, fg=TEXT,
+                      insertbackground=TEXT, relief="flat", padx=12, pady=10,
+                      font=("Consolas", 10), spacing1=2, spacing3=2)
+        txt.insert("1.0", report_txt)
+        txt.configure(state="disabled")
+        txt.pack(fill="x", padx=18, pady=(0, 12))
+        ysb = ttk.Scrollbar(self, orient="vertical", command=txt.yview)
+        txt.configure(yscrollcommand=ysb.set)
+
+        ttk.Label(self, text="Approve or reject each suggested line",
+                  style="Title.TLabel").pack(anchor="w", padx=18)
+        cols = ("item", "forecast", "qty", "confidence", "decision")
+        self.tree = ttk.Treeview(self, columns=cols, show="headings")
+        headings = (("item", 240, "w"), ("forecast", 90, "e"),
+                    ("qty", 70, "e"), ("confidence", 90, "e"),
+                    ("decision", 120, "center"))
+        for col, width, anchor in headings:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=width, anchor=anchor)
+        for item, pred, qty, conf in rows:
+            dec = self.decisions.get(item, "")
+            self.tree.insert("", "end", iid=item,
+                             values=(item, f"{pred:.0f}", qty, f"{conf:.2f}",
+                                     dec or "pending"))
+        self.tree.pack(fill="both", expand=True, padx=18, pady=(6, 8))
+
+        btns = tk.Frame(self, bg=BG)
+        btns.pack(fill="x", padx=18, pady=(0, 6))
+        AnimatedButton(btns, text="Approve selected",
+                       command=lambda: self._decide("approved"),
+                       style="primary").pack(side="left", padx=(0, 8))
+        AnimatedButton(btns, text="Reject selected",
+                       command=lambda: self._decide("rejected"),
+                       style="danger").pack(side="left", padx=(0, 8))
+        AnimatedButton(btns, text="Close",
+                       command=self.destroy).pack(side="right")
+        self.status = ttk.Label(self, style="Muted.TLabel")
+        self.status.pack(anchor="w", padx=18, pady=(0, 10))
+        self._refresh_status()
+
+        for i in range(1, 15):
+            self.after(16, lambda v=i: self.attributes("-alpha", v / 14))
+        self.after(16 * 15, lambda: self.attributes("-alpha", 1.0))
+
+    def _decide(self, decision):
+        selected = self.tree.selection()
+        if not selected:
+            self.status.configure(
+                text="Select one or more lines first (click a row).")
+            return
+        for iid in selected:
+            qty = int(self.tree.set(iid, "qty"))
+            try:
+                self.svc.record_decision(iid, self.report_date, qty, decision)
+            except ValueError as e:
+                self.status.configure(text=f"Save failed: {e}")
+                return
+            self.decisions[iid] = decision
+            self.tree.set(iid, "decision", decision)
+        self._refresh_status(decision, len(selected))
+
+    def _refresh_status(self, decision=None, count=0):
+        approved = sum(1 for v in self.decisions.values() if v == "approved")
+        rejected = sum(1 for v in self.decisions.values() if v == "rejected")
+        line = (f"Decisions for {self.report_date}: "
+                f"{approved} approved, {rejected} rejected")
+        if decision:
+            line += f"  (just {decision} {count} line(s))"
+        self.status.configure(text=line)
 
 
 def main():

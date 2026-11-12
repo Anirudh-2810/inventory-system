@@ -151,6 +151,23 @@ def main():
     else:
         print("[SKIP] tscore repo not found - forecast test skipped")
 
+    # -- Forecast decisions (approve/reject persistence) -------------------
+    svc.record_decision("WM-001", "2026-11-11", 30, "approved")
+    svc.record_decision("UC-002", "2026-11-11", 10, "rejected")
+    svc.record_decision("WM-001", "2026-11-11", 35, "rejected")  # re-decide
+    decs = {d["item"]: d for d in svc.list_decisions("2026-11-11")}
+    assert set(decs) == {"WM-001", "UC-002"}, decs
+    assert decs["WM-001"]["decision"] == "rejected"      # upsert replaced
+    assert decs["WM-001"]["suggested_qty"] == 35, decs
+    assert decs["UC-002"]["decision"] == "rejected"
+    try:
+        svc.record_decision("WM-001", "2026-11-11", 1, "maybe")
+        raise AssertionError("bad decision must raise")
+    except ValueError:
+        pass
+    assert len(svc.list_decisions()) == 2                # no date filter
+    print("[OK] Forecast decisions (upsert + validation):", list(decs))
+
     print("\nALL TESTS PASSED")
 
 
