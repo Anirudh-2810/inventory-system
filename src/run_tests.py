@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from pathlib import Path
 
 from inventory_system import InventoryService
 
@@ -126,6 +127,29 @@ def main():
     assert csv_safe(42) == 42 and csv_safe(3.5) == 3.5
     assert csv_safe("Plain Name") == "Plain Name"
     print("[OK] csv_safe formula-injection guard")
+
+    # -- Weekly report via tscore (skip when the sibling repo is absent) --
+    ts_dir = Path(__file__).resolve().parents[2] / "tscore"
+    if (ts_dir / "scripts" / "report.py").is_file():
+        import subprocess
+        import sys as _sys
+        out_dir = os.path.join(tempfile.gettempdir(), "sb_report_test")
+        proc = subprocess.run(
+            [_sys.executable, os.path.join(os.path.dirname(__file__), "main.py"),
+             "forecast", "--out", out_dir, "--budget", "100000"],
+            capture_output=True, text=True,
+            env={**os.environ, "INVENTORY_DB_PATH": tmp})
+        assert proc.returncode == 0, proc.stderr or proc.stdout
+        report = os.path.join(out_dir, "report.txt")
+        forecast = os.path.join(out_dir, "forecast.csv")
+        assert os.path.isfile(report) and os.path.isfile(forecast)
+        with open(forecast, newline="", encoding="utf-8") as f:
+            header = f.readline().strip()
+        assert header == "item,predicted_demand,suggested_reorder,confidence", header
+        assert "ORDER THIS WEEK" in open(report, encoding="utf-8").read()
+        print("[OK] Weekly report generated via tscore")
+    else:
+        print("[SKIP] tscore repo not found - forecast test skipped")
 
     print("\nALL TESTS PASSED")
 

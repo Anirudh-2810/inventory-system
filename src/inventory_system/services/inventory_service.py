@@ -212,6 +212,46 @@ class InventoryService:
                 "skipped": skipped, "problems": problems}
 
     # ---- Reporting --------------------------------------------------------
+    def get_sales_history(self) -> List[tuple]:
+        """All sale rows as (item_key, date, quantity) for tscore contracts.
+
+        item_key prefers SKU (falls back to name) so values round-trip
+        through find_product()/import resolution.
+        """
+        with self.db._connect() as conn:
+            rows = conn.execute(
+                """SELECT COALESCE(NULLIF(TRIM(p.sku), ''), p.name) AS item,
+                          t.timestamp, t.quantity_change
+                   FROM transactions t
+                   JOIN products p ON p.id = t.product_id
+                   WHERE t.transaction_type = 'sale'"""
+            ).fetchall()
+        out: List[tuple] = []
+        for item, ts, qty in rows:
+            when = datetime.fromisoformat(ts)
+            out.append((item, when.date(), abs(int(qty))))
+        return out
+
+    def get_last_receipts(self) -> Dict[str, int]:
+        """product_id -> qty of its most recent positive receipt.
+
+        Approximates "last order" from deliveries (positive adjustments) —
+        good enough for the multiple-of-last-order guard; corrections made
+        with negative/positive adjusts can skew it (documented tradeoff).
+        """
+        with self.db._connect() as conn:
+            rows = conn.execute(
+                """SELECT product_id, quantity_change, timestamp
+                   FROM transactions
+                   WHERE quantity_change > 0 AND transaction_type != 'sale'
+                   ORDER BY timestamp DESC"""
+            ).fetchall()
+        out: Dict[str, int] = {}
+        for product_id, qty, _ in rows:
+            if product_id not in out:
+                out[product_id] = int(qty)
+        return out
+
     def get_stock_status(self, owner_id: Optional[str] = None) -> Dict:
         return self.db.get_stock_status(owner_id)
 

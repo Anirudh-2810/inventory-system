@@ -12,11 +12,13 @@ Commands:
   report   category + sales breakdown
   export   write inventory.csv
   import-sales  import a sales CSV (item,date,quantity,price)
+  forecast weekly reorder report (via the tscore repo)
 
 Examples:
   python main.py add --name "Widget" --price 9.99 --stock 100 --sku W-1 --reorder 20
   python main.py sale --id W-1 --qty 5
   python main.py restock --id W-1 --qty 50
+  python main.py forecast --budget 5000
   python main.py report
 """
 
@@ -24,9 +26,12 @@ import argparse
 import csv
 import logging
 import os
+import subprocess
 import sys
+import tempfile
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from pathlib import Path
 
 # --- Environment validation -------------------------------------------------
 # Load environment variables (optionally from .env file if python-dotenv is available)
@@ -209,6 +214,55 @@ def cmd_import_sales(a):
               file=sys.stderr)
 
 
+def _tscore_dir() -> Path:
+    """Where the tscore forecasting repo lives (override: TSCORE_DIR)."""
+    env = os.getenv("TSCORE_DIR")
+    if env:
+        return Path(env)
+    # dev layout: <Brain>/inventory-system/src/main.py -> <Brain>/tscore
+    return Path(__file__).resolve().parents[2] / "tscore"
+
+
+def cmd_forecast(a):
+    """Weekly reorder report: export history+stock -> tscore report.py -> print."""
+    script = _tscore_dir() / "scripts" / "report.py"
+    if not script.is_file():
+        fail(f"tscore not found at {_tscore_dir()} - set TSCORE_DIR "
+             "to the tscore checkout")
+    s = svc()
+    hist = s.get_sales_history()
+    if not hist:
+        fail("no sales history yet - run import-sales first")
+    tmp = Path(tempfile.mkdtemp(prefix="sb_forecast_"))
+    sales_csv = tmp / "sales.csv"
+    with open(sales_csv, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["item", "date", "quantity", "price"])
+        for item, d, qty in hist:
+            w.writerow([item, d.isoformat(), qty, 0])
+    receipts = s.get_last_receipts()
+    stock_csv = tmp / "stock.csv"
+    with open(stock_csv, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["item", "on_hand", "unit_price", "last_order_qty"])
+        for p in s.list_products():
+            key = (p.sku or "").strip() or p.name
+            w.writerow([key, p.quantity, p.unit_price, receipts.get(p.id, "")])
+    out_dir = (Path(a.out) if a.out
+               else Path(DB_PATH).parent / "reports" / date.today().isoformat())
+    cmd = [sys.executable, str(script), "--sales", str(sales_csv),
+           "--stock", str(stock_csv), "--out-dir", str(out_dir)]
+    for flag, val in (("--budget", a.budget), ("--safety", a.safety),
+                      ("--lead-time", a.lead_time),
+                      ("--max-order", a.max_order),
+                      ("--max-multiple", a.max_multiple)):
+        if val is not None:
+            cmd += [flag, str(val)]
+    proc = subprocess.run(cmd)
+    if proc.returncode != 0:
+        fail(f"report generation failed (tscore exit {proc.returncode})")
+
+
 # -- parser ---------------------------------------------------------------
 def build_parser():
     p = argparse.ArgumentParser(prog="inventory", description="Offline inventory manager")
@@ -276,6 +330,17 @@ def build_parser():
     im.add_argument("--create-missing", action="store_true",
                     help="create a product for items not in the catalog")
     im.set_defaults(func=cmd_import_sales)
+
+    fc = sub.add_parser(
+        "forecast",
+        help="weekly reorder report (needs the tscore repo; TSCORE_DIR)")
+    fc.add_argument("--out", help="output dir (default <db dir>/reports/<today>)")
+    fc.add_argument("--budget", type=float, help="weekly spend cap")
+    fc.add_argument("--safety", type=float, help="safety buffer fraction")
+    fc.add_argument("--lead-time", type=int, help="delivery weeks to cover")
+    fc.add_argument("--max-order", type=int, help="per-line qty cap")
+    fc.add_argument("--max-multiple", type=float, help="cap = this x last order")
+    fc.set_defaults(func=cmd_forecast)
 
     return p
 
