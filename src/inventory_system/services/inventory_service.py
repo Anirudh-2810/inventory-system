@@ -1,6 +1,8 @@
 """Inventory service — high-level operations on products and stock levels."""
 
 import csv
+import math
+import os
 from datetime import date, datetime
 from typing import Dict, List, Optional
 
@@ -11,6 +13,22 @@ from .database import InventoryDatabase
 # Sales CSV contract (tscore data-contract.md v1): item, date, quantity, price.
 # Column order may vary and extra columns are ignored; these four must exist.
 SALES_CSV_COLUMNS = ("item", "date", "quantity", "price")
+
+# Refuse absurd inputs before they are read into memory (a 50 MB sales CSV
+# is already ~500k rows — far beyond any till export this app targets).
+MAX_IMPORT_BYTES = 50 * 1024 * 1024
+
+
+def csv_safe(value):
+    """Neutralize spreadsheet formula injection on CSV export.
+
+    Text cells starting with =, +, -, @, TAB or CR are prefixed with an
+    apostrophe so Excel/Sheets treat them as text, not formulas (OWASP
+    CSV-injection guidance). Non-str values (numbers) pass through untouched.
+    """
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
 
 
 class InventoryService:
@@ -93,14 +111,29 @@ class InventoryService:
         Returns: {"imported": int, "created": int, "skipped": int,
                   "problems": [str, ...]}
         """
-        with open(path, newline="", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            header = reader.fieldnames or []
-            missing = [c for c in SALES_CSV_COLUMNS if c not in header]
-            if missing:
-                raise ValueError(
-                    f"not a contract sales CSV: missing column(s) {', '.join(missing)}")
-            rows = list(reader)
+        if os.path.getsize(path) > MAX_IMPORT_BYTES:
+            raise ValueError(
+                f"sales CSV too large ({os.path.getsize(path)} bytes, "
+                f"limit {MAX_IMPORT_BYTES})")
+        try:
+            with open(path, newline="", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f)
+                raw_header = reader.fieldnames or []
+                # Headers may carry stray spaces from Excel exports (" item").
+                header = [(h or "").strip() for h in raw_header]
+                missing = [c for c in SALES_CSV_COLUMNS if c not in header]
+                if missing:
+                    raise ValueError(
+                        f"not a contract sales CSV: missing column(s) {', '.join(missing)}")
+                key_map = {(raw or "").strip(): raw for raw in raw_header}
+                rows = [
+                    {name: row.get(raw) for name, raw in key_map.items()}
+                    for row in reader
+                ]
+        except UnicodeDecodeError:
+            raise ValueError("file is not UTF-8 text — re-save it as UTF-8")
+        except csv.Error as e:
+            raise ValueError(f"malformed CSV: {e}")
 
         name_map = {
             (p.name or "").strip().casefold(): p.id
@@ -132,18 +165,21 @@ class InventoryService:
                 problem(f"row {i}: future date {raw_date!r}")
                 continue
             try:
-                qty = int(raw_qty)
+                qty_f = float(raw_qty)  # Excel exports "2.0"; accept integral only
+                if not math.isfinite(qty_f) or qty_f != int(qty_f):
+                    raise ValueError
+                qty = int(qty_f)
                 if qty < 1:
                     raise ValueError
-            except ValueError:
+            except (ValueError, OverflowError):
                 problem(f"row {i}: bad quantity {raw_qty!r} (want integer >= 1)")
                 continue
             try:
                 price = float(raw_price)
-                if price < 0:
+                if not math.isfinite(price) or price < 0:
                     raise ValueError
-            except ValueError:
-                problem(f"row {i}: bad price {raw_price!r} (want number >= 0)")
+            except (ValueError, OverflowError):
+                problem(f"row {i}: bad price {raw_price!r} (want finite number >= 0)")
                 continue
 
             product = (

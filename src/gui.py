@@ -15,16 +15,17 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog
 
-from inventory_system import InventoryService
+from inventory_system import InventoryService, csv_safe
 
 # When frozen by PyInstaller (one-file build), __file__ points into the temp
 # extraction directory, so resolve the database next to the real executable
 # instead -- otherwise inventory would be created in a temp dir and lost.
+# INVENTORY_DB_PATH overrides for dev/test, same as the CLI.
 if getattr(sys, "frozen", False):
     _BASE = os.path.dirname(sys.executable)
 else:
     _BASE = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(_BASE, "inventory.db")
+DB_PATH = os.getenv("INVENTORY_DB_PATH") or os.path.join(_BASE, "inventory.db")
 
 # -- dark palette --------------------------------------------------------
 BG       = "#15151f"   # window background
@@ -499,14 +500,14 @@ class InventoryApp:
         import csv
         out = os.path.join(os.path.dirname(DB_PATH), "inventory.csv")
         products = self.svc.list_products()
-        with open(out, "w", newline="") as f:
+        with open(out, "w", newline="", encoding="utf-8-sig") as f:
             w = csv.writer(f)
             w.writerow(["sku", "name", "category", "quantity",
                         "reorder_level", "unit_price", "cost_price", "supplier"])
             for p in products:
-                w.writerow([p.sku, p.name, p.category, p.quantity,
-                            p.reorder_level, p.unit_price, p.cost_price,
-                            p.supplier])
+                w.writerow([csv_safe(p.sku), csv_safe(p.name), csv_safe(p.category),
+                            p.quantity, p.reorder_level, p.unit_price,
+                            p.cost_price, csv_safe(p.supplier)])
         self.toast.show(f"Exported {len(products)} products to CSV.", kind="success")
 
     def _import(self):
@@ -517,7 +518,7 @@ class InventoryApp:
             return
         try:
             summary = self.svc.import_sales_csv(path)
-        except ValueError as e:
+        except (ValueError, OSError) as e:
             messagebox.showerror("Import failed", str(e), parent=self.root)
             return
         msg = (f"Imported {summary['imported']} sales rows, "

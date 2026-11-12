@@ -98,6 +98,35 @@ def main():
     except ValueError:
         print("[OK] Non-contract CSV rejected")
 
+    # edge cases: Excel-style spaced headers, "2.0" qty, nan/inf price
+    with open(sales_csv, "w", newline="", encoding="utf-8") as f:
+        f.write(" item , date , quantity , price \n")
+        f.write("WM-001,2026-10-05,2.0,25.00\n")   # integral float qty -> ok
+        f.write("WM-001,2026-10-06,2.5,25.00\n")   # fractional qty -> problem
+        f.write("WM-001,2026-10-07,1,nan\n")       # NaN price -> problem
+        f.write("WM-001,2026-10-08,1,inf\n")       # Inf price -> problem
+    summary = svc.import_sales_csv(sales_csv)
+    assert summary["imported"] == 1, summary
+    assert summary["skipped"] == 3, summary
+    print("[OK] Import edges (spaced header, 2.0 qty, nan/inf price):", summary)
+
+    # non-UTF8 file -> clean ValueError, not a UnicodeDecodeError traceback
+    with open(sales_csv, "wb") as f:
+        f.write(b"item,date,quantity,price\nCaf\xe9,2026-10-05,1,2.00\n")
+    try:
+        svc.import_sales_csv(sales_csv)
+        raise AssertionError("expected ValueError for non-UTF8 CSV")
+    except ValueError:
+        print("[OK] Non-UTF8 CSV rejected cleanly")
+
+    # CSV formula injection neutralized on export
+    from inventory_system import csv_safe
+    assert csv_safe("=cmd|'/c calc'!A0") == "'=cmd|'/c calc'!A0"
+    assert csv_safe("+1234") == "'+1234"
+    assert csv_safe(42) == 42 and csv_safe(3.5) == 3.5
+    assert csv_safe("Plain Name") == "Plain Name"
+    print("[OK] csv_safe formula-injection guard")
+
     print("\nALL TESTS PASSED")
 
 

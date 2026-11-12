@@ -6,6 +6,7 @@ Commands:
   edit     update a product's fields        (by id or sku)
   delete   remove a product                 (by id or sku)
   sale     record a sale  (reduces stock)
+  restock  receive stock  (+qty)
   adjust   correct stock   (+/-)
   status   stock health at a glance
   report   category + sales breakdown
@@ -15,6 +16,7 @@ Commands:
 Examples:
   python main.py add --name "Widget" --price 9.99 --stock 100 --sku W-1 --reorder 20
   python main.py sale --id W-1 --qty 5
+  python main.py restock --id W-1 --qty 50
   python main.py report
 """
 
@@ -65,7 +67,7 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from inventory_system import InventoryService
+from inventory_system import InventoryService, csv_safe
 
 
 # -- helpers --------------------------------------------------------------
@@ -142,10 +144,21 @@ def cmd_sale(a):
 def cmd_adjust(a):
     p = resolve(a.id)
     try:
-        p = svc().adjust_stock(p.id, a.qty)
+        p = svc().adjust_stock(p.id, a.qty, notes=a.reason or "")
     except ValueError as e:
         fail(str(e))
     print(f"Adjusted {a.qty:+d} | {p.name} -> {p.quantity}")
+
+
+def cmd_restock(a):
+    if a.qty < 1:
+        fail("restock qty must be >= 1 (use adjust for removals)")
+    p = resolve(a.id)
+    try:
+        p = svc().adjust_stock(p.id, a.qty, notes=a.reason or "restock")
+    except ValueError as e:
+        fail(str(e))
+    print(f"Restocked {a.qty} | {p.name} -> {p.quantity}")
 
 
 def cmd_status(a):
@@ -168,13 +181,14 @@ def cmd_report(a):
 def cmd_export(a):
     products = svc().list_products()
     out = a.file or os.path.join(os.path.dirname(DB_PATH), "inventory.csv")
-    with open(out, "w", newline="") as f:
+    with open(out, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["sku", "name", "category", "quantity",
                     "reorder_level", "unit_price", "cost_price", "supplier"])
         for p in products:
-            w.writerow([p.sku, p.name, p.category, p.quantity,
-                        p.reorder_level, p.unit_price, p.cost_price, p.supplier])
+            w.writerow([csv_safe(p.sku), csv_safe(p.name), csv_safe(p.category),
+                        p.quantity, p.reorder_level, p.unit_price,
+                        p.cost_price, csv_safe(p.supplier)])
     print(f"Exported {len(products)} products -> {out}")
 
 
@@ -183,7 +197,7 @@ def cmd_import_sales(a):
         fail(f"No such file: {a.file}")
     try:
         summary = svc().import_sales_csv(a.file, create_missing=a.create_missing)
-    except ValueError as e:
+    except (ValueError, OSError) as e:
         fail(str(e))
     print(f"Imported {summary['imported']} sales rows"
           + (f" (created {summary['created']} new items)" if summary["created"] else "")
@@ -239,7 +253,14 @@ def build_parser():
     ad = sub.add_parser("adjust", help="adjust stock (+/-)")
     ad.add_argument("--id", required=True)
     ad.add_argument("--qty", type=int, required=True)
+    ad.add_argument("--reason", default="", help="note recorded on the transaction")
     ad.set_defaults(func=cmd_adjust)
+
+    rs = sub.add_parser("restock", help="receive stock (+qty)")
+    rs.add_argument("--id", required=True)
+    rs.add_argument("--qty", type=int, required=True)
+    rs.add_argument("--reason", default="", help="note recorded on the transaction")
+    rs.set_defaults(func=cmd_restock)
 
     sub.add_parser("status", help="stock health").set_defaults(func=cmd_status)
     sub.add_parser("report", help="reports").set_defaults(func=cmd_report)

@@ -74,21 +74,27 @@ class InventoryDatabase:
                     timestamp        TEXT NOT NULL,
                     FOREIGN KEY (product_id) REFERENCES products (id)
                 );
+                """
+            )
+            conn.commit()
+            # Migrations FIRST: older DBs predate these columns, and the
+            # indexes below reference them (index-before-migration crashed
+            # every legacy DB at startup).
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(products)")]
+            if "barcode" not in cols:
+                conn.execute("ALTER TABLE products ADD COLUMN barcode TEXT")
+                conn.commit()
+            if "owner_id" not in cols:
+                conn.execute("ALTER TABLE products ADD COLUMN owner_id TEXT")
+                conn.commit()
+            conn.executescript(
+                """
                 CREATE INDEX IF NOT EXISTS idx_tx_time      ON transactions (timestamp);
                 CREATE INDEX IF NOT EXISTS idx_prod_supplier ON products (supplier);
                 CREATE INDEX IF NOT EXISTS idx_prod_owner    ON products (owner_id);
                 """
             )
             conn.commit()
-            # Migration: add barcode column if an older DB is opened.
-            cols = [r[1] for r in conn.execute("PRAGMA table_info(products)")]
-            if "barcode" not in cols:
-                conn.execute("ALTER TABLE products ADD COLUMN barcode TEXT")
-                conn.commit()
-            # Migration: add owner_id column for multi-tenant/web support.
-            if "owner_id" not in cols:
-                conn.execute("ALTER TABLE products ADD COLUMN owner_id TEXT")
-                conn.commit()
 
     # -- products ---------------------------------------------------------
     def add_product(self, product: Product) -> Product:
