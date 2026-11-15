@@ -27,3 +27,4 @@ module                            (paid extra when ready)
 PAYMENT: UPI only.
 NOTE: No GST registration needed below Rs.20 lakh turnover.
 ========================================================
+Proprietary © StockOffline. All rights reserved.
