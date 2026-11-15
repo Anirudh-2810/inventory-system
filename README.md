@@ -20,6 +20,11 @@ that want multi-user, multi-device access.
   format (`item,date,quantity,price`). Historical imports are dated but never
   touch counted stock (no double-counting); unknown items are reported, not
   guessed. GUI: **Import** button. CLI: `import-sales`.
+- **Weekly forecast + reorder report** — the **Forecast** screen (GUI) or
+  `forecast` (CLI) runs the tscore backtest-gated model on your sales history
+  and shows `report.txt` + suggested reorder lines with confidence; **approve
+  or reject each line** — decisions are saved per report date. Needs the
+  tscore checkout (set `TSCORE_DIR`, or keep it as a sibling directory).
 - **Optional web/API tier** — JWT auth, per-tenant data isolation, rate
   limiting, and server-side payment verification.
 - **Security-hardened** — see [Security](#security) below.
@@ -74,9 +79,16 @@ python main.py sale --id W-1 --qty 5
 python main.py status
 python main.py report
 python main.py export
+python main.py forecast --budget 5000   # weekly reorder report (needs tscore)
 ```
 
 Run `python main.py -h` for the full command list.
+
+The **forecast** command runs the [tscore](https://github.com/Anirudh-2810/tscore)
+report pipeline on your imported sales history and writes `report.txt` +
+`forecast.csv`. It needs a tscore checkout: set `TSCORE_DIR=/path/to/tscore`
+or keep tscore as a sibling directory of this repo. In the GUI, press the
+**Forecast** button instead — same pipeline, with per-line approve/reject.
 
 ---
 
