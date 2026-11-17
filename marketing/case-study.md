@@ -79,4 +79,4 @@ through the forecast on your own data — no data leaves your machine.
 Demo: `python scripts/demo.py` in tscore runs the whole pipeline end to end.*
 
 ---
-Proprietary — © StockOffline. All rights reserved.
+Proprietary — Copyright (c) 2026 Anirudh Vijaykumar (github.com/Anirudh-2810). All rights reserved.
